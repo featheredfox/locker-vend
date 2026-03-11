@@ -18,7 +18,7 @@ class AuthService:
             return True
         return False
     
-    def logout(self):
+    def logout(self, **kwargs):
         self.current_user = None
 
     def get_user_level(self) -> int:
