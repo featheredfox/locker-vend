@@ -4,12 +4,13 @@ import msvcrt
 from typing import TypeVar, Type, Optional, List, Tuple
 from inputimeout import inputimeout, TimeoutOccurred
 from business_logic.services import AuthService
-from core.enums import UI, SystemMessage
+from core.enums import UI, Transaction, SystemMessage, Misc
 from presentation.views import View
 from data_access.models import SessionLocal
-from data_access.repositories import UserRepository
-from business_logic.services import DatabaseSeeder
+from data_access.repositories import UserRepository, ContainerRepository, DirectoryRepository
+from business_logic.services import TransactionService, InventoryService, DatabaseSeeder
 import business_logic.rules as rules
+from business_logic.rules import ActionDispatcher
 
 
 
@@ -25,8 +26,16 @@ class VendingMachineCLI:
 
         self.view = View()
         
+        # Repositories
         self.user_repo = UserRepository(self.session)
+        self.container_repo = ContainerRepository(self.session)
+        self.dir_repo = DirectoryRepository(self.session)
+
+        # Services
         self.auth = AuthService(self.user_repo)
+        self.inventory = InventoryService(self.container_repo, self.dir_repo)
+        self.transaction = TransactionService(self.container_repo, self.inventory)
+        
 
         DatabaseSeeder(self.session).seed()
 
@@ -65,19 +74,41 @@ class VendingMachineCLI:
         if selection is None: 
             print(self.view.SystemMessage.get_input_error_message(err_code=err_code, timeout_action=SystemMessage.Input.TimeoutAction.LOGOUT))
             action = rules.get_input_error_action(err_code=err_code, timeout_action=SystemMessage.Input.TimeoutAction.LOGOUT)
-            self._execute_action(action=action, timeout=5)
+            ActionDispatcher.execute(app_context=self, action=action, timeout=5)
             return
         
-        # action = rules.get_dashboard_action(selection)
-        # self._execute_action(action)
+        action = rules.get_dashboard_action(selection=selection)
+        ActionDispatcher.execute(app_context=self, action=action)
+
+    def take_screen(self):
+        """Handles user selection of item to TAKE"""
+        self.view.UIFormatter.clear_screen()
+        self.page = UI.UIPage.TAKE
+        self.transaction_type = Transaction.Type.TAKE
+        print(self.view.UIFormatter.page_header(page=self.page, username=self.auth.current_user.username.upper(), user_level=self.auth.get_user_level()))
+
+        stock = self.inventory.sort_stock_counts(sort_order=Misc.SortOrder.DESC, only_available_stock=True)
+
+        for i, (item, count) in enumerate(stock): print(f"{View.MenuPrompt.stock_list_options(i=i, part_no=item.part_no, count=count)}")
+        selection, err_code = self._get_user_input(prompt=self.view.MenuPrompt.item_selection(page=self.page, transaction_type=self.transaction_type), input_type=int, allowed_val=[i+1 for i in range(len(stock))])
+        if selection is None: 
+            print(self.view.SystemMessage.get_input_error_message(err_code=err_code, timeout_action=SystemMessage.Input.TimeoutAction.LOGOUT))
+            action = rules.get_input_error_action(err_code=err_code, timeout_action=SystemMessage.Input.TimeoutAction.LOGOUT)
+            ActionDispatcher.execute(app_context=self, action=action, timeout=5)
+            return
         
+        # selected_part_no = stock[selection - 1][0].part_no
+        # self.transaction_screen(transaction_type=self.transaction_type, part_no=selected_part_no)
+
         # FOR TESTING
-        if selection:
-            input("\nSELECTION SUCCESSFUL")
-            return
-        else:
-            input("\nSELECTION FAILED")
-            return
+        print(f"{selection}")
+        input("SELECTION SUCCESSFUL!")
+        return
+
+    def transaction_screen(self, transaction_type: int, part_no: str = None):
+        pass
+
+
 
 
     # ========== HELPER FUNCTIONS ================================================
@@ -112,24 +143,5 @@ class VendingMachineCLI:
                 return True
             time.sleep(0.05)
         return False
-    
-    def _execute_action(self, action: tuple, **kwargs):
-        """Dynamically executes a method based on the rulebook's routing instructions."""
-        OBJECT = 0
-        METHOD = 1
-        
-        obj_name = action[OBJECT]
-        method_name = action[METHOD]
-        
-        if not method_name:
-            return 
-
-        if obj_name is None:
-            method_to_call = getattr(self, method_name)
-        else:
-            obj = getattr(self, obj_name)
-            method_to_call = getattr(obj, method_name)
-            
-        return method_to_call(**kwargs)
             
             

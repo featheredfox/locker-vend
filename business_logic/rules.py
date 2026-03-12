@@ -15,8 +15,6 @@ def get_input_error_action(err_code: int, timeout_action: int = None) -> Tuple[O
         case SystemMessage.Input.MAX_LENGTH | SystemMessage.Input.INVALID: method_name = '_wait_for_enter'
     return obj_name, method_name
 
-
-
 def get_allowed_dashboard_actions(user_level: int) -> List[int]:
     allowed_actions = []
     allowed_actions.append(UI.DashboardActions.TAKE)
@@ -38,3 +36,24 @@ def get_dashboard_action(selection: int) -> Tuple[Optional[str], Optional[str]]:
         case UI.DashboardActions.CHNG_PIN: method_name = 'chng_pin_screen'
         case UI.DashboardActions.LOGOUT: obj_name, method_name = 'auth', 'logout'
     return obj_name, method_name
+
+class ActionDispatcher:
+    OBJECT = 0
+    METHOD = 1
+
+    @staticmethod
+    def execute(app_context, action: tuple, **kwargs):
+        """Dynamically executes a method based on the rulebook's routing instructions."""
+        obj_name = action[ActionDispatcher.OBJECT]
+        method_name = action[ActionDispatcher.METHOD]
+        
+        if not method_name:
+            return False, None
+
+        if obj_name is None:
+            method_to_call = getattr(app_context, method_name)
+        else:
+            target_obj = getattr(app_context, obj_name)
+            method_to_call = getattr(target_obj, method_name)
+            
+        return method_to_call(**kwargs)
