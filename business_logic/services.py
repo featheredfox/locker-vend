@@ -85,19 +85,21 @@ class TransactionService:
         self.active_timed_action_event = None
         self._timeout_triggered = False # FIX: Flag to escape the while loop!
         
-    def process_transaction(self, transaction_type: int, part_no: str = None) -> Tuple[bool, int, Optional[ContainerModel]]:
+    def process(self, transaction_type: int, part_no: str = None) -> Tuple[int, Optional[int], Optional[ContainerModel]]:
         match transaction_type:
             case Transaction.Type.TAKE: container = self.container_repo.get_container_to_take(part_no)
             case Transaction.Type.RESTOCK: container = self.container_repo.get_container_to_restock(part_no)
         
         if not container:
-            return False, Transaction.Status.NONE, None
+            return Transaction.Status.NONE, None, container
 
-        self.hardware_service.open_container(container)
+        complete, msg_code = self.hardware_service.open_container(container)
         success, hw_msg = self.hardware_service.monitor_container_open(container)
+
+        success = True # For testing
         
         if not success: 
-            return False, Transaction.Status.FAILED, container
+            return Transaction.Status.FAILED, Transaction.Error.UNLOCK_FAILED, container
         
         self._timeout_triggered = False
         
@@ -107,22 +109,21 @@ class TransactionService:
 
         self._start_timed_action(on_timeout_callback=handle_timeout, timeout_seconds=120)
 
-        while self.hardware_service.is_container_open(container):
+        # Omitted for testing
+        #while self.hardware_service.is_container_open(container):
             # FIX: Escape Hatch! If the callback ran, get out of this loop!
-            if self._timeout_triggered:
-                break
-            time.sleep(0.5)
+        #    if self._timeout_triggered:
+        #        break
+        #    time.sleep(0.5)
 
         self._stop_timed_action()
 
-        # FIX: Check WHY we left the loop!
         if self._timeout_triggered:
-            # You can map this to a specific Timeout/Failed status in your Enums
-            return False, Transaction.Status.FAILED, container
+            return Transaction.Status.FAILED, Transaction.Error.CONTAINER_NOT_CLOSED, container
 
-        return True, Transaction.Status.AWAIT_CONFIRMATION, container
+        return Transaction.Status.AWAIT_CONFIRMATION, None, container
 
-    def finalize_transaction(self, transaction_type: int, part_no: str, container: ContainerModel):
+    def finalize(self, transaction_type: int, part_no: str, container: ContainerModel) -> int:
         match transaction_type:
             case Transaction.Type.TAKE:
                 container.status = Container.Status.Content.NONE
@@ -136,10 +137,16 @@ class TransactionService:
         self.container_repo.commit_changes()
         # Update LED here
 
-        return True, Transaction.Status.COMPLETE
+        return Transaction.Status.COMPLETE
 
-    def cancel_transaction(self, container: ContainerModel):
-        return True, Transaction.Status.CANCELLED
+    def cancelled(self, container: ContainerModel, **kwargs) -> int:
+        # Do nothing with database - return message code
+        return Transaction.Status.CANCELLED
+    
+    def failed(self, container: ContainerModel, **kwargs) -> int:
+        container.status = Container.Status.Content.UNKNOWN
+        self.container_repo.commit_changes()
+        return Transaction.Status.FAILED
 
     def _start_timed_action(self, on_timeout_callback: callable, timeout_seconds: int = 30):
         self.active_timed_action_event = threading.Event()

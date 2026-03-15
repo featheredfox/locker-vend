@@ -1,6 +1,7 @@
 
 from typing import Optional, List, Tuple
-from core.enums import UserLevel, UI, SystemMessage
+from core.enums import UserLevel, UI, SystemMessage, Transaction
+
 
 
 def get_input_error_action(err_code: int, timeout_action: int = None) -> Tuple[Optional[str], Optional[str]]:
@@ -35,6 +36,17 @@ def get_dashboard_action(selection: int) -> Tuple[Optional[str], Optional[str]]:
         case UI.DashboardActions.CONFIG: method_name = 'config_screen'
         case UI.DashboardActions.CHNG_PIN: method_name = 'chng_pin_screen'
         case UI.DashboardActions.LOGOUT: obj_name, method_name = 'auth', 'logout'
+    return obj_name, method_name
+
+def get_transaction_action(transaction_status: int) -> Tuple[Optional[str], Optional[str]]:
+
+    obj_name, method_name = None, None
+
+    match transaction_status:
+        case Transaction.Status.NONE: obj_name, method_name = 'transaction', 'process'
+        case Transaction.Status.CONFIRMED: obj_name, method_name = 'transaction', 'finalize'
+        case Transaction.Status.CANCELLED: obj_name, method_name = 'transaction', 'cancelled'
+        case Transaction.Status.FAILED: obj_name, method_name = 'transaction', 'failed'
     return obj_name, method_name
 
 class ActionDispatcher:

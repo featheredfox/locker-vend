@@ -17,6 +17,7 @@ class UI:
         DASHBOARD = 2
         TAKE = 3
         RESTOCK = 4
+        TRANSACTION = 5
 
     class DashboardActions:
         TAKE = 1
@@ -71,14 +72,25 @@ class Transaction:
 
     class Status:
         NONE = 1
-        AWAIT_CONFIRMATION = 2
-        COMPLETE = 3
-        FAILED = 4
-        CANCELLED = 5
+        IN_PROGRESS = 2
+        AWAIT_CONFIRMATION = 3
+        CONFIRMED = 4
+        COMPLETE = 5
+        FAILED = 6
+        CANCELLED = 7
+
+    class Error:
+        UNLOCK_FAILED = 1
+        CONTAINER_NOT_CLOSED = 2
+        TRANSACTION_NOT_CONFIRMED = 3
 
 class Misc:
 
     class SortOrder:
         ASC = 1
         DESC = 2
+
+    class Confirm:
+        YES = 1
+        NO = 2
 

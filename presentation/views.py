@@ -1,6 +1,6 @@
 import os
 import subprocess
-from core.enums import UserLevel, UI, SystemMessage, Transaction
+from core.enums import UserLevel, UI, SystemMessage, Transaction, Misc
 
 
 class View:
@@ -21,6 +21,7 @@ class View:
                 case UI.UIPage.DASHBOARD: title = 'DASHBOARD'
                 case UI.UIPage.TAKE: title = 'TAKE ITEM'
                 case UI.UIPage.RESTOCK: title = 'RESTOCK ITEM'
+                case UI.UIPage.TRANSACTION: title = 'TRANSACTION'
 
             border = "=" * width
             centered_title = title.upper().center(width)
@@ -35,7 +36,7 @@ class View:
             return 'Unknown'
         
         @staticmethod
-        def action_string(page: int, transaction_type: int) -> str:
+        def action_string(transaction_type: int) -> str:
             TAKE = 'TAKE'
             RESTOCK = 'RESTOCK'
             ADD = 'ADD'
@@ -83,7 +84,30 @@ class View:
         
         @staticmethod
         def item_selection(page: int, transaction_type: int) -> str:
-            return f"\n>> Select an item to {View.UIFormatter.action_string(page=page, transaction_type=transaction_type)}:\n"
+            return f"\n>> Select an item to {View.UIFormatter.action_string(transaction_type=transaction_type)}:\n"
+        
+        def confirm_action() -> str:
+            return f"\n>> [{Misc.Confirm.YES}] Yes / [{Misc.Confirm.NO} No]: "
+        
+    class ServiceMessage:
+
+        @staticmethod
+        def transaction_message(transaction_status: int, error_code: int, transaction_type: int, container_id: int) -> str:
+            context_str = 'from' if transaction_type == Transaction.Type.TAKE else 'to'
+            if error_code:
+                match error_code:
+                    case Transaction.Error.UNLOCK_FAILED: error_msg = "Container unlock failed."
+                    case Transaction.Error.CONTAINER_NOT_CLOSED: error_msg = f"Container not closed. Status of container #{container_id} UNKNOWN!"
+                    case Transaction.Error.TRANSACTION_NOT_CONFIRMED: error_msg = f"Transaction not confirmed by user. Status of container #{container_id} UNKNOWN!"
+           
+            match transaction_status:
+                case Transaction.Status.NONE: return "No container available"
+                case Transaction.Status.IN_PROGRESS: return f"Please {View.UIFormatter.action_string(transaction_type)} item {context_str} Container #{container_id}"
+                case Transaction.Status.AWAIT_CONFIRMATION: return f"Did you successfully {View.UIFormatter.action_string(transaction_type)} {context_str} Container #{container_id}? {View.MenuPrompt.confirm_action()}"
+                case Transaction.Status.CONFIRMED: return f"Transaction confirmed."
+                case Transaction.Status.COMPLETE: return "Transaction complete."
+                case Transaction.Status.FAILED: return f"Transaction failure. - {error_msg}"
+                case Transaction.Status.CANCELLED: return f"Transaction with Container #{container_id} cancelled."
         
         
     class SystemMessage:

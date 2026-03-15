@@ -8,11 +8,9 @@ from core.enums import UI, Transaction, SystemMessage, Misc
 from presentation.views import View
 from data_access.models import SessionLocal
 from data_access.repositories import UserRepository, ContainerRepository, DirectoryRepository
-from business_logic.services import TransactionService, InventoryService, DatabaseSeeder
+from business_logic.services import TransactionService, InventoryService, DatabaseSeeder, HardwareService
 import business_logic.rules as rules
 from business_logic.rules import ActionDispatcher
-
-
 
 T = TypeVar('T')
 
@@ -33,10 +31,10 @@ class VendingMachineCLI:
 
         # Services
         self.auth = AuthService(self.user_repo)
+        self.hardware = HardwareService(self.container_repo)
         self.inventory = InventoryService(self.container_repo, self.dir_repo)
-        self.transaction = TransactionService(self.container_repo, self.inventory)
+        self.transaction = TransactionService(self.container_repo, self.hardware)
         
-
         DatabaseSeeder(self.session).seed()
 
     def start(self):
@@ -97,19 +95,55 @@ class VendingMachineCLI:
             ActionDispatcher.execute(app_context=self, action=action, timeout=5)
             return
         
-        # selected_part_no = stock[selection - 1][0].part_no
-        # self.transaction_screen(transaction_type=self.transaction_type, part_no=selected_part_no)
+        selected_part_no = stock[selection - 1][0].part_no
+        self.transaction_screen(transaction_type=self.transaction_type, part_no=selected_part_no)
 
-        # FOR TESTING
-        print(f"{selection}")
-        input("SELECTION SUCCESSFUL!")
-        return
+    def restock_screen(self):
+        """Handles user selection of item to RESTOCK"""
+        self.view.UIFormatter.clear_screen()
+        self.page = UI.UIPage.RESTOCK
+        self.transaction_type = Transaction.Type.RESTOCK
+        print(self.view.UIFormatter.page_header(page=self.page, username=self.auth.current_user.username.upper(), user_level=self.auth.get_user_level()))
+
+        stock = self.inventory.sort_stock_counts(sort_order=Misc.SortOrder.ASC, only_available_stock=False)
+
+        for i, (item, count) in enumerate(stock): print(f"{View.MenuPrompt.stock_list_options(i=i, part_no=item.part_no, count=count)}")
+        selection, err_code = self._get_user_input(prompt=self.view.MenuPrompt.item_selection(page=self.page, transaction_type=self.transaction_type), input_type=int, allowed_val=[i+1 for i in range(len(stock))])
+        if selection is None: 
+            print(self.view.SystemMessage.get_input_error_message(err_code=err_code, timeout_action=SystemMessage.Input.TimeoutAction.LOGOUT))
+            action = rules.get_input_error_action(err_code=err_code, timeout_action=SystemMessage.Input.TimeoutAction.LOGOUT)
+            ActionDispatcher.execute(app_context=self, action=action, timeout=5)
+            return
+        
+        selected_part_no = stock[selection - 1][0].part_no
+        self.transaction_screen(transaction_type=self.transaction_type, part_no=selected_part_no)
 
     def transaction_screen(self, transaction_type: int, part_no: str = None):
-        pass
+        """Handles transaction with user"""
+        self.view.UIFormatter.clear_screen()
+        self.page = UI.UIPage.TRANSACTION
+        self.transaction_status = Transaction.Status.NONE
+        print(self.view.UIFormatter.page_header(page=self.page, username=self.auth.current_user.username.upper(), user_level=self.auth.get_user_level()))
 
+        self.transaction_status = Transaction.Status.IN_PROGRESS
+        self.transaction_status, err_code, container = self.transaction.process(transaction_type=transaction_type, part_no=part_no)
+        container_id = container.id if container else 0
 
+        if self.transaction_status is Transaction.Status.FAILED: 
+            print(self.view.ServiceMessage.transaction_message(transaction_status=self.transaction_status, error_code=err_code, transaction_type=transaction_type, container_id=container_id))
+            time.sleep(2)
+            action = rules.get_transaction_action(transaction_status=self.transaction_status)
+            ActionDispatcher.execute(app_context=self, action=action, container=container)
+            return
+        
+        selection, input_err = self._get_user_input(prompt=self.view.ServiceMessage.transaction_message(transaction_status=self.transaction_status, error_code=err_code, transaction_type=transaction_type, container_id=container_id), input_type=int, allowed_val=[Misc.Confirm.YES, Misc.Confirm.NO])
+        self.transaction_status = Transaction.Status.CONFIRMED if selection == Misc.Confirm.YES else Transaction.Status.CANCELLED
+        action = rules.get_transaction_action(transaction_status=self.transaction_status)
+        self.transaction_status = ActionDispatcher.execute(app_context=self, action=action, transaction_type=transaction_type, part_no=part_no, container=container)
 
+        print(View.ServiceMessage.transaction_message(transaction_status=self.transaction_status, error_code=0, transaction_type=transaction_type, container_id=container_id))
+        time.sleep(5)
+        return
 
     # ========== HELPER FUNCTIONS ================================================
 
