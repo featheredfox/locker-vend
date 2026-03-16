@@ -2,7 +2,7 @@ import time
 import threading
 from datetime import datetime
 from typing import Optional, Tuple
-from core.enums import UserLevel, Container, Transaction, Misc
+from core.enums import UserLevel, Container, Transaction, DirectoryOp, Misc
 from data_access.models import UserModel, ItemDirectoryModel, ContainerModel
 from data_access.repositories import UserRepository, DirectoryRepository, ContainerRepository
 
@@ -27,7 +27,6 @@ class AuthService:
     def get_user_level(self) -> int:
         return self.current_user.level if self.current_user else UserLevel.OPERATOR
     
-
 # ========== HARDWARE =========================================================================
 
 class HardwareService:
@@ -49,9 +48,6 @@ class HardwareService:
             return False
         
         # [HARDWARE INTEGRATION] Read actual GPIO state here!
-        # state = GPIO.input(container.sens_inp_pin)
-        # return state == GPIO.LOW  # (Assuming LOW means door is open)
-        
         # Simulating a closed door for testing:
         return False
     
@@ -75,7 +71,6 @@ class HardwareService:
             
         return True, Container.Status.Hardware.Message.CLOSED        
     
-
 # ========== TRANSACTIONS =====================================================================
 
 class TransactionService:
@@ -83,7 +78,7 @@ class TransactionService:
         self.container_repo = container_repo
         self.hardware_service = hardware_service
         self.active_timed_action_event = None
-        self._timeout_triggered = False # FIX: Flag to escape the while loop!
+        self._timeout_triggered = False 
         
     def process(self, transaction_type: int, part_no: str = None) -> Tuple[int, Optional[int], Optional[ContainerModel]]:
         match transaction_type:
@@ -109,12 +104,11 @@ class TransactionService:
 
         self._start_timed_action(on_timeout_callback=handle_timeout, timeout_seconds=120)
 
-        # Omitted for testing
-        #while self.hardware_service.is_container_open(container):
-            # FIX: Escape Hatch! If the callback ran, get out of this loop!
-        #    if self._timeout_triggered:
-        #        break
-        #    time.sleep(0.5)
+        # Omitted for testing:
+        # while self.hardware_service.is_container_open(container):
+        #     if self._timeout_triggered:
+        #         break
+        #     time.sleep(0.5)
 
         self._stop_timed_action()
 
@@ -135,12 +129,9 @@ class TransactionService:
                 container.part_no = part_no
         
         self.container_repo.commit_changes()
-        # Update LED here
-
         return Transaction.Status.COMPLETE
 
     def cancelled(self, container: ContainerModel, **kwargs) -> int:
-        # Do nothing with database - return message code
         return Transaction.Status.CANCELLED
     
     def failed(self, container: ContainerModel, **kwargs) -> int:
@@ -150,11 +141,9 @@ class TransactionService:
 
     def _start_timed_action(self, on_timeout_callback: callable, timeout_seconds: int = 30):
         self.active_timed_action_event = threading.Event()
-        
         def timed_task():
             if not self.active_timed_action_event.wait(timeout=timeout_seconds):
                 on_timeout_callback()
-            
         worker = threading.Thread(target=timed_task, daemon=True)
         worker.start()
 
@@ -181,6 +170,36 @@ class InventoryService:
 
         is_reverse = False if sort_order == Misc.SortOrder.ASC else True
         return sorted(item_stock_data, key=lambda x: x[1], reverse=is_reverse)
+
+# ========== DIRECTORY ========================================================================
+
+class DirectoryService:
+    def __init__(self, dir_repo: DirectoryRepository, container_repo: ContainerRepository):
+        self.dir_repo = dir_repo
+        self.container_repo = container_repo
+
+    def get_all_items(self) -> list:
+        return sorted(self.dir_repo.get_all_items(), key=lambda x: x.description)
+
+    def add_item(self, part_no: str, manufacturer: str, description: str) -> int:
+        item = ItemDirectoryModel(part_no=part_no, manufacturer=manufacturer, description=description)
+        self.dir_repo.add_item(item)
+        return DirectoryOp.Message.ADDED
+
+    def delete_item(self, part_no: str) -> int:
+        item = self.dir_repo.get_item(part_no)
+        if item:
+            self.dir_repo.delete_item(item)
+        return DirectoryOp.Message.DELETED
+
+    def update_item(self, part_no: str, manufacturer: str, description: str) -> int:
+        item = self.dir_repo.update_item(part_no, manufacturer, description)
+        return DirectoryOp.Message.UPDATED
+    
+    def check_inventory(self, part_no: str) -> bool:
+        # FIX: Ensure true if stock > 0, false otherwise
+        stock = self.container_repo.get_stock_count(part_no=part_no)
+        return stock > 0
 
 # ========== DATABASE SEEDER ==================================================================
 

@@ -47,6 +47,10 @@ class DirectoryRepository(BaseRepository):
         self.session.delete(item)
         self.commit_changes()
 
+    def update_item(self, item: ItemDirectoryModel):
+        self.session.merge(item)
+        self.commit_changes()
+
 class ContainerRepository(BaseRepository):
     def get_all_containers(self) -> List[ContainerModel]:
         return self.session.query(ContainerModel).order_by(ContainerModel.id).all()

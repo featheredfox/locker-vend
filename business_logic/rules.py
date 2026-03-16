@@ -1,8 +1,6 @@
 
 from typing import Optional, List, Tuple
-from core.enums import UserLevel, UI, SystemMessage, Transaction
-
-
+from core.enums import UserLevel, UI, SystemMessage, Transaction, DirectoryOp
 
 def get_input_error_action(err_code: int, timeout_action: int = None) -> Tuple[Optional[str], Optional[str]]:
     
@@ -47,6 +45,16 @@ def get_transaction_action(transaction_status: int) -> Tuple[Optional[str], Opti
         case Transaction.Status.CONFIRMED: obj_name, method_name = 'transaction', 'finalize'
         case Transaction.Status.CANCELLED: obj_name, method_name = 'transaction', 'cancelled'
         case Transaction.Status.FAILED: obj_name, method_name = 'transaction', 'failed'
+    return obj_name, method_name
+
+def get_directory_action(selection: int) -> Tuple[Optional[str], Optional[str]]:
+
+    obj_name, method_name = None, None
+
+    match selection:
+        case DirectoryOp.Type.ADD: method_name = 'dir_add_screen'
+        case DirectoryOp.Type.DELETE: method_name = 'dir_delete_screen'
+        case DirectoryOp.Type.UPDATE: method_name = 'dir_update_screen'
     return obj_name, method_name
 
 class ActionDispatcher:
