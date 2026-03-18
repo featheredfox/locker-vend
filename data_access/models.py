@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy import create_engine, String, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, relationship
-from core.enums import UserLevel, Container
+from core.enums import UserLevel, ContainerContent
 
 
 
@@ -33,7 +33,8 @@ class ContainerModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     part_no: Mapped[Optional[str]] = mapped_column(ForeignKey("item_directory.part_no"), nullable=True)
     item: Mapped[Optional["ItemDirectoryModel"]] = relationship(back_populates="containers")
-    status: Mapped[int] = mapped_column(default=Container.Status.Content.NONE)
+    status: Mapped[int] = mapped_column(default=ContainerContent.EMPTY)
+    assigned_item: Mapped[Optional[str]] = mapped_column(default=None)
     deposited_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     retrieved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

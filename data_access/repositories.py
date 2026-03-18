@@ -1,7 +1,7 @@
 from typing import Optional
 from sqlalchemy import select, func
 from data_access.models import SessionLocal, UserModel, ItemDirectoryModel, ContainerModel
-from core.enums import Container
+from core.enums import ContainerContent
 from typing import List
 import datetime
 
@@ -54,16 +54,28 @@ class DirectoryRepository(BaseRepository):
 class ContainerRepository(BaseRepository):
     def get_all_containers(self) -> List[ContainerModel]:
         return self.session.query(ContainerModel).order_by(ContainerModel.id).all()
+    
+    def add_container(self, container: ContainerModel):
+        self.session.add(container)
+        self.commit_changes()
+
+    def delete_container(self, container: ContainerModel):
+        self.session.delete(container)
+        self.commit_changes()
 
     def get_stock_count(self, part_no: str) -> int:
-        return self.session.query(ContainerModel).filter(ContainerModel.part_no == part_no, ContainerModel.status == Container.Status.Content.PRESENT).count()
+        return self.session.query(ContainerModel).filter(ContainerModel.part_no == part_no, ContainerModel.status == ContainerContent.PRESENT).count()
 
     def get_container_to_take(self, part_no: str) -> Optional[ContainerModel]:
-        stmt = select(ContainerModel).where(ContainerModel.part_no == part_no).where(ContainerModel.status == Container.Status.Content.PRESENT).order_by(ContainerModel.deposited_at.asc())
+        stmt = select(ContainerModel).where(ContainerModel.part_no == part_no).where(ContainerModel.status == ContainerContent.PRESENT).order_by(ContainerModel.deposited_at.asc())
         return self.session.execute(stmt).scalars().first()
 
-    def get_container_to_restock(self, part_no: str) -> Optional[ContainerModel]:
-        stmt = select(ContainerModel).where(ContainerModel.part_no == part_no).where(ContainerModel.status == Container.Status.Content.NONE)
+    def get_assigned_container_to_restock(self, part_no: str) -> Optional[ContainerModel]:
+        stmt = select(ContainerModel).where(ContainerModel.assigned_item == part_no).where(ContainerModel.status == ContainerContent.EMPTY)
+        return self.session.execute(stmt).scalars().first()
+
+    def get_unassigned_container_to_restock(self, part_no: str) -> Optional[ContainerModel]:
+        stmt = select(ContainerModel).where(ContainerModel.assigned_item == None).where(ContainerModel.status == ContainerContent.EMPTY)
         return self.session.execute(stmt).scalars().first()
 
     def get_free_container(self) -> Optional[ContainerModel]:
@@ -72,4 +84,25 @@ class ContainerRepository(BaseRepository):
     def get_container_status(self, container_id: int) -> int:
         stmt = select(ContainerModel.status).where(ContainerModel.id == container_id)
         return self.session.execute(stmt).scalar() or 0
-        
+    
+    def get_assigned_containers(self) -> list[ContainerModel]:
+        return self.session.query(ContainerModel).order_by(ContainerModel.id).where(ContainerModel.assigned_item is not None).all()
+
+    def get_unassigned_containers(self) -> list[ContainerModel]:
+        return self.session.query(ContainerModel).order_by(ContainerModel.id).where(ContainerModel.assigned_item is None).all()
+    
+    def get_container_by_id(self, container_id: int) -> Optional[ContainerModel]:
+        return self.session.query(ContainerModel).filter(ContainerModel.id == container_id).first()
+    
+    def assign_container(self, container: ContainerModel, item: ItemDirectoryModel):
+        container.assigned_item = item
+        self.commit_changes()
+
+    def unassign_container(self, container: ContainerModel):
+        container.assigned_item = None
+        self.commit_changes()
+
+    def get_next_id(self) -> int:
+        return self.session.query(func.max(ContainerModel.id)).scalar() + 1 if self.session.query(ContainerModel).count() > 0 else 1
+
+    
